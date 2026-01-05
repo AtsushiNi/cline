@@ -22,4 +22,15 @@ export interface ClineAPI {
 	 * Simulates pressing the secondary button in the chat interface.
 	 */
 	pressSecondaryButton(): Promise<void>
+
+	/**
+	 * Gets the current task status.
+	 * @returns Task status: "none" (no task), "active" (task is running), "completed" (task completed with attempt_completion), "cancelled" (task was cancelled)
+	 */
+	getTaskStatus(): Promise<"none" | "active" | "completed" | "cancelled">
+
+	/**
+	 * Returns the messages for the current task (empty array if no task).
+	 */
+	getTaskMessages(): Promise<any[]>
 }

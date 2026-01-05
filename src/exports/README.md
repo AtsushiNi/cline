@@ -32,6 +32,14 @@ The Cline extension exposes an API that can be used by other extensions. To use 
 
     	// Simulate pressing the secondary button in the chat interface (e.g. 'Reject')
     	await cline.pressSecondaryButton()
+
+    	// Get the current task status
+    	const status = await cline.getTaskStatus()
+    	console.log(`Current task status: ${status}`)
+
+    	// Get all messages for the current task
+    	const messages = await cline.getTaskMessages()
+    	console.log(`Task has ${messages.length} message(s)`)
     } else {
     	console.error("Cline API is not available")
     }

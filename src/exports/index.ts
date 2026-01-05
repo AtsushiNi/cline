@@ -45,6 +45,14 @@ export function createClineAPI(sidebarController: Controller): ClineAPI {
 				HostProvider.get().logToChannel("No active task to press button for")
 			}
 		},
+
+		getTaskStatus: async () => {
+			return await sidebarController.getTaskStatus()
+		},
+
+		getTaskMessages: async () => {
+			return await sidebarController.getTaskMessages()
+		},
 	}
 
 	return api

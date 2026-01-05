@@ -1,0 +1,133 @@
+# Cline Extension GitLab CI Pipeline
+# Dockerfileの内容を直接実行して.vsixファイルを生成します
+
+# 使用するベースイメージ（Dockerfileのbuilderステージと同じ）
+image: node:20-bullseye
+
+# 変数の定義
+variables:
+  OUTPUT_DIR: "./docker-output"
+  VSIX_NAME: "cline-gitlab-build.vsix"
+  
+  # Dockerfileの環境変数
+  CLINE_ENVIRONMENT: "production"
+  TELEMETRY_SERVICE_API_KEY: "dummy_key_for_build"
+  ERROR_SERVICE_API_KEY: "dummy_key_for_build"
+  OTEL_TELEMETRY_ENABLED: "false"
+  OTEL_LOGS_EXPORTER: "otlp"
+  OTEL_METRICS_EXPORTER: "otlp"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4317"
+  OTEL_EXPORTER_OTLP_HEADERS: ""
+
+# キャッシュ設定
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - node_modules/
+    - webview-ui/node_modules/
+  policy: pull-push
+
+# ステージの定義
+stages:
+  - setup
+  - build
+  - package
+
+# セットアップステージ（必要なツールのインストール）
+setup:
+  stage: setup
+  script:
+    - echo "=== セットアップ開始 ==="
+    
+    # Dockerfileと同じツールのインストール
+    - apt-get update && apt-get install -y \
+      git \
+      python3 \
+      make \
+      g++ \
+      protobuf-compiler \
+      && rm -rf /var/lib/apt/lists/*
+    
+    # vsceツールのインストール（Dockerfileと同じ）
+    - npm install -g @vscode/vsce
+    
+    - echo "✓ セットアップ完了"
+
+# ビルドステージ（Dockerfileのbuilderステージの内容を実行）
+build:
+  stage: build
+  dependencies:
+    - setup
+  script:
+    - echo "=== ビルド開始 ==="
+    
+    # 作業ディレクトリは既に/appではなくプロジェクトルート
+    
+    # 依存関係のインストール（オプション依存関係を含む）- Dockerfileと同じ
+    - npm install --include=optional
+    
+    # webview-uiの依存関係のインストール - Dockerfileと同じ
+    - cd webview-ui && npm install --include=optional && cd ..
+    
+    # Protobufのコンパイル（システムのprotocを使用）- Dockerfileと同じ
+    - PROTOC=/usr/bin/protoc npm run protos
+    
+    # タイプチェックとリンターの実行 - Dockerfileと同じ
+    - npm run check-types
+    - npm run lint
+    
+    # webview-uiのビルド - Dockerfileと同じ
+    - npm run build:webview
+    
+    # 拡張機能のビルド（プロダクションモード）- Dockerfileと同じ
+    - npm run package
+    
+    - echo "✓ ビルド完了"
+
+# パッケージステージ（.vsixファイルの生成）
+package:
+  stage: package
+  dependencies:
+    - build
+  script:
+    - echo "=== .vsixファイルの生成 ==="
+    - mkdir -p $OUTPUT_DIR
+    
+    # .vsixファイルの生成 - Dockerfileと同じ
+    - vsce package --allow-package-secrets sendgrid --out "$OUTPUT_DIR/$VSIX_NAME"
+    
+    # ファイル情報の表示
+    - echo "✓ .vsixファイルの生成が完了しました: $OUTPUT_DIR/$VSIX_NAME"
+    - echo ""
+    - echo "生成されたファイル情報:"
+    - echo "----------------------"
+    - ls -lh $OUTPUT_DIR/$VSIX_NAME
+    
+    # パッケージ情報の表示（Dockerfileのruntimeステージの内容を簡略化）
+    - echo ""
+    - echo "拡張機能情報:"
+    - echo "-------------"
+    - echo "Cline Extension Build Information"
+    - echo "================================"
+    - cat package.json | grep -E '"name"|"version"|"description"'
+    - echo ""
+    - echo "Generated .vsix file: $VSIX_NAME"
+    - ls -lh $OUTPUT_DIR/$VSIX_NAME
+    
+    - echo ""
+    - echo "=== ビルド完了 ==="
+    - echo ""
+    - echo "次のコマンドでVS Codeにインストールできます:"
+    - echo "  code --install-extension $OUTPUT_DIR/$VSIX_NAME"
+  artifacts:
+    paths:
+      - $OUTPUT_DIR/$VSIX_NAME
+    expire_in: 1 month
+
+# パイプラインの実行ルール
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
