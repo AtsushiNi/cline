@@ -1,0 +1,68 @@
+# CI pipeline that uses a prebuilt image with system and npm deps.
+# This avoids apt-get and npm install inside the CI runner.
+
+image: $CI_PREBUILT_IMAGE
+
+variables:
+  OUTPUT_DIR: "./docker-output"
+  VSIX_NAME: "cline-gitlab-build.vsix"
+
+  # Dockerfileの環境変数
+  CLINE_ENVIRONMENT: "production"
+  TELEMETRY_SERVICE_API_KEY: "dummy_key_for_build"
+  ERROR_SERVICE_API_KEY: "dummy_key_for_build"
+  OTEL_TELEMETRY_ENABLED: "false"
+  OTEL_LOGS_EXPORTER: "otlp"
+  OTEL_METRICS_EXPORTER: "otlp"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4317"
+  OTEL_EXPORTER_OTLP_HEADERS: ""
+
+# キャッシュ設定（node_modulesはイメージに含まれるため不要）
+cache:
+  policy: pull
+
+stages:
+  - build
+  - package
+
+.before_copy_deps:
+  before_script:
+    - echo "=== 依存関係のコピー ==="
+    - rm -rf node_modules webview-ui/node_modules
+    - cp -a /opt/deps/node_modules ./node_modules
+    - mkdir -p webview-ui
+    - cp -a /opt/deps/webview-ui/node_modules ./webview-ui/node_modules
+    - echo "✓ 依存関係のコピー完了"
+
+build:
+  stage: build
+  extends: .before_copy_deps
+  script:
+    - echo "=== ビルド開始 ==="
+    - PROTOC=/usr/bin/protoc npm run protos
+    - npm run check-types
+    - npm run lint
+    - npm run build:webview
+    - npm run package
+    - echo "✓ ビルド完了"
+
+package:
+  stage: package
+  extends: .before_copy_deps
+  script:
+    - echo "=== .vsixファイルの生成 ==="
+    - mkdir -p $OUTPUT_DIR
+    - vsce package --allow-package-secrets sendgrid --out "$OUTPUT_DIR/$VSIX_NAME"
+    - echo "✓ .vsixファイルの生成が完了しました: $OUTPUT_DIR/$VSIX_NAME"
+    - ls -lh $OUTPUT_DIR/$VSIX_NAME
+  artifacts:
+    paths:
+      - $OUTPUT_DIR/$VSIX_NAME
+    expire_in: 1 month
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"

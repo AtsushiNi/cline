@@ -1,0 +1,26 @@
+# Prebuilt CI image with system deps and npm deps installed.
+# Build this image in an environment that can access apt-get and npm.
+
+FROM node:20-bullseye
+
+# System build dependencies used by this repo.
+RUN apt-get update && apt-get install -y \
+    git \
+    python3 \
+    make \
+    g++ \
+    protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/deps
+
+# Install npm deps for the root and webview-ui packages.
+COPY package*.json ./
+COPY webview-ui/package*.json ./webview-ui/
+RUN npm install --include=optional
+RUN cd webview-ui && npm install --include=optional
+
+# vsce is required to package the VSIX.
+RUN npm install -g @vscode/vsce
+
+# Keep deps in /opt/deps so CI can copy them into the repo workspace.
