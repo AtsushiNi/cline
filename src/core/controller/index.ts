@@ -9,7 +9,7 @@ import { ClineAccountService } from "@services/account/ClineAccountService"
 import { McpHub } from "@services/mcp/McpHub"
 import type { ApiProvider, ModelInfo } from "@shared/api"
 import type { ChatContent } from "@shared/ChatContent"
-import type { ExtensionState, Platform } from "@shared/ExtensionMessage"
+import type { ClineMessage, ExtensionState, Platform } from "@shared/ExtensionMessage"
 import type { HistoryItem } from "@shared/HistoryItem"
 import type { McpMarketplaceCatalog, McpMarketplaceItem } from "@shared/mcp"
 import type { Settings } from "@shared/storage/state-keys"
@@ -965,6 +965,38 @@ export class Controller {
 		}
 		await this.task?.abortTask()
 		this.task = undefined // removes reference to it, so once promises end it will be garbage collected
+	}
+
+	/**
+	 * Get the current task status
+	 * @returns Task status: "none" (no task), "active" (task is running), "completed" (task completed with attempt_completion), "cancelled" (task was cancelled)
+	 */
+	async getTaskStatus(): Promise<"none" | "active" | "completed" | "cancelled"> {
+		if (!this.task) {
+			return "none"
+		}
+
+		if (this.task.taskState.abort) {
+			return "cancelled"
+		}
+
+		// Check if the last message is a completion_result
+		const clineMessages = this.task.messageStateHandler.getClineMessages()
+		const lastMessage = clineMessages[clineMessages.length - 1]
+		if (lastMessage?.say === "completion_result") {
+			return "completed"
+		}
+
+		return "active"
+	}
+
+	async getTaskMessages(): Promise<ClineMessage[]> {
+		if (!this.task) {
+			return []
+		}
+
+		// Return a deep copy so callers can't mutate internal state
+		return structuredClone(this.task.messageStateHandler.getClineMessages())
 	}
 
 	// Caching mechanism to keep track of webview messages + API conversation history per provider instance
